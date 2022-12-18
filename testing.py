@@ -1,3 +1,6 @@
+from datetime import datetime
+import os
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -10,6 +13,7 @@ import time
 from bs4 import BeautifulSoup
 import requests
 import re
+import json
 
 H = {'User-Agent': 'Mozilla/5.0'}
 
@@ -17,7 +21,7 @@ H = {'User-Agent': 'Mozilla/5.0'}
 def sclick(target):
     time.sleep(0.1)
     target.click()
-    time.sleep(0.1)
+    time.sleep(0.2)
 
 
 def navigate_to_market():
@@ -34,11 +38,14 @@ def navigate_to_market():
     time.sleep(0.2)
 
 
-def buy_loop(players_prices_dict):
+def buy_loop():
     # Set player name and max value to search
-    target_profit = 200
+    target_profit = 300
+    with open("prices.txt", "r") as prices:
+        for line in prices:
+            players_prices_dict = json.loads(line)
     for name, price in players_prices_dict.items():
-        target_price = str(price * 0.95 - target_profit)
+        target_price = "2100"  # str(price * 0.95 - target_profit)
         name_box = driver.find_element(By.XPATH, "/html/body/main/section/section/div[2]/"
                                                  "div/div[2]/div/div[1]/div[1]/div[1]/div/div[1]/input")
         sclick(name_box)
@@ -59,6 +66,7 @@ def buy_loop(players_prices_dict):
 
 def bid_and_sell(sell_value, player_name):
     # Click search
+    profit = 0
     driver.find_element(By.XPATH, "/html/body/main/section/section/div[2]/"
                                   "div/div[2]/div/div[2]/button[2]").click()
     try:
@@ -79,9 +87,10 @@ def bid_and_sell(sell_value, player_name):
                     EC.presence_of_element_located((By.CSS_SELECTOR, ".listFUTItem.won"))
                 )
                 if bid_won:
+                    time.sleep(0.2)
                     bid_value = driver.find_element(By.XPATH, "/html/body/main/section/section/div[2]/div/div/"
-                                                              "section[2]/div/div/div[2]/div[1]/div[2]/div/span[2]").get_attribute("innerText")
-                    bid_value = re.sub(r".", "", bid_value)
+                                                              "section[1]/div/ul/li[1]/div/div[2]/div[2]/span[2]").text
+                    bid_value = re.sub(r",", "", bid_value)
                     print(f"{player_name} bid won: {bid_value}")
                     driver.find_element(By.XPATH, "/html/body/main/section/section/div[2]/div/div/"
                                                   "section[2]/div/div/div[2]/div[2]/div[1]/button").click()  # list on the transfer market
@@ -108,7 +117,7 @@ def bid_and_sell(sell_value, player_name):
                     print(f"{player_name} listed for: {sell_value}")
                     time.sleep(0.2)
                     if bid_value:
-                        profit = sell_value * 0.95 - float(bid_value)
+                        profit += sell_value * 0.95 - float(bid_value)
                         print(f"Expected profit: {profit}")
 
             except TimeoutException:
@@ -133,31 +142,30 @@ def get_player_ids():
         value = player_img.get("data-original")  # this is where we can find the player ID
         new_value = re.search(r"/\d*\.", value).group(0)
         ids_dict[f"{new_key}"] = new_value.strip("/.")
-    print(ids_dict)
     return ids_dict
 
 
 def get_players_prices():
+    print("Fetching prices...")
     base_url = "https://www.futbin.com/23/playerPrices/?player="
     prices = {}
-    count = 0
     for name, id_ in get_player_ids().items():
-        count += 1
-        time.sleep(0.5)
+        time.sleep(1)
         url = base_url + id_
         r = requests.get(url, headers=H)
         data = r.json()
         price = data[id_]['prices']['pc']['LCPrice']
         price = re.sub(r",", "", price)
         prices[name] = int(price)
-        if count == 10:
-            print(prices)
-            return prices
-    print(prices)
-    return prices
+    with open("prices.txt", "w") as file:
+        file.truncate(0)
+        file.write(json.dumps(prices))
+    print("Prices successfully fetched.")
 
 
-players_prices = get_players_prices()
+last_modified_time = os.path.getmtime("prices.txt")
+if time.time() - last_modified_time > 1800:
+    get_players_prices()
 service = Service(r"C:\Program Files (x86)\chromedriver.exe")
 options = Options()
 options.add_argument(r"--user-data-dir=C:\Users\Joao Marcos\AppData\Local\Google\Chrome\User Data")
@@ -169,4 +177,4 @@ driver.get("https://www.ea.com/fifa/ultimate-team/web-app/")
 
 navigate_to_market()
 while True:
-    buy_loop(players_prices)
+    buy_loop()
