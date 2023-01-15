@@ -14,11 +14,20 @@ import json
 import os
 
 H = {'User-Agent': 'Mozilla/5.0'}
+PROFIT_INTENDED = 600
 
 
-def wait_for_shield_invisibility(driver_):
+def avoid_shadow_ban():
+    ban = WebDriverWait(driver, 1).until(
+            EC.invisibility_of_element_located((By.CLASS_NAME, "Notification"))
+        )
+    if not ban:
+        quit(33)
 
-    WebDriverWait(driver_, 30).until(
+
+def wait_for_shield_invisibility():
+
+    WebDriverWait(driver, 30).until(
         EC.invisibility_of_element_located(
             (By.CLASS_NAME, 'ut-click-shield'))
     )
@@ -26,9 +35,9 @@ def wait_for_shield_invisibility(driver_):
 
 
 def sclick(target):
-    sleep(0.3)
+    sleep(0.1)
     target.click()
-    sleep(0.3)
+    sleep(0.1)
 
 
 def navigate_to_market():
@@ -37,7 +46,7 @@ def navigate_to_market():
     )
     transfer.click()
 
-    wait_for_shield_invisibility(driver)
+    wait_for_shield_invisibility()
 
     search_market_box = driver.find_element(By.CLASS_NAME, "ut-tile-transfer-market")
     search_market_box.click()
@@ -54,15 +63,13 @@ def navigate_to_market():
 
 
 def buy_loop():
-    # Set player name and max value to search
-    target_profit = 600
     loop_profit = 0
     with open("prices.txt", "r") as prices:
         for line in prices:
             players_prices_dict = json.loads(line)
     for name, price in players_prices_dict.items():
-        sleep(2.5)
-        target_price = str(price - target_profit)
+        sleep(1.5)
+        target_price = str(price - PROFIT_INTENDED)
         name_box = driver.find_element(By.XPATH, "/html/body/main/section/section/div[2]/"
                                                  "div/div[2]/div/div[1]/div[1]/div[1]/div/div[1]/input")
         sclick(name_box)
@@ -86,17 +93,20 @@ def buy_loop():
         sclick(max_value_box)
         max_value_box.send_keys(target_price)
         max_value_box.send_keys(Keys.ENTER)
-        sleep(0.5)
         # Click search
-        driver.find_element(By.XPATH, "/html/body/main/section/section/div[2]/"
-                                      "div/div[2]/div/div[2]/button[2]").click()
+        sclick(driver.find_element(By.XPATH, "/html/body/main/section/section/div[2]/"
+                                             "div/div[2]/div/div[2]/button[2]"))
+
+        avoid_shadow_ban()
+
         try:
             WebDriverWait(driver, 1).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, ".listFUTItem"))
             )
             loop_profit += bid_and_sell(price, name)
+            continue
         except TimeoutException:
-            driver.find_element(By.CSS_SELECTOR, ".ut-navigation-button-control").click()  # go back
+            sclick(driver.find_element(By.CSS_SELECTOR, ".ut-navigation-button-control"))  # go back
 
     return loop_profit
 
@@ -105,15 +115,15 @@ def bid_and_sell(sell_value, player_name):
     profit = 0
     player_list = driver.find_elements(By.CSS_SELECTOR, ".listFUTItem")
     for player in player_list:  # <li> in <ul>
-        wait_for_shield_invisibility(driver)
-        player.click()
-        sleep(0.2)
-        driver.find_element(By.CLASS_NAME, "buyButton").click()  # buy now
-        sleep(0.2)
-        driver.find_element(By.XPATH, "/html/body/div[4]/section/div/div/button[1]").click()  # confirm
-        sleep(0.2)
+        wait_for_shield_invisibility()
+        WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable(player)
+                )
+        sclick(player)
+        sclick(driver.find_element(By.CLASS_NAME, "buyButton"))  # buy now
+        sclick(driver.find_element(By.XPATH, "/html/body/div[4]/section/div/div/button[1]"))  # confirm
         try:
-            bid_won = WebDriverWait(driver, 1).until(
+            bid_won = WebDriverWait(driver, 2.5).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "li.listFUTItem.has-auction-data.selected.won"))
             )
         except TimeoutException:
@@ -126,18 +136,16 @@ def bid_and_sell(sell_value, player_name):
             print("-" * 40)
             print(f"{player_name} bid won: {bid_value}")
 
-            driver.find_element(By.XPATH, "/html/body/main/section/section/div[2]/div/div/"
-                                          "section[2]/div/div/div[2]/div[2]/div[1]/button").click()  # list on the transfer market
+            sclick(driver.find_element(By.XPATH, "/html/body/main/section/section/div[2]/div/div/"
+                                                 "section[2]/div/div/div[2]/div[2]/div[1]/button"))  # list on the transfer market
 
-            wait_for_shield_invisibility(driver)
+            wait_for_shield_invisibility()
 
             max_value_box = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.XPATH, "/html/body/main/section/section/div[2]/div/div/"
                                                       "section[2]/div/div/div[2]/div[2]/div[2]/div[3]/div[2]/input"))
                 )
-
-            max_value_box.click()
-            sleep(0.2)
+            sclick(max_value_box)
             max_value_box.send_keys(Keys.BACK_SPACE)
             sleep(0.2)
             max_value_box.send_keys(sell_value)
@@ -147,25 +155,24 @@ def bid_and_sell(sell_value, player_name):
                 EC.element_to_be_clickable((By.XPATH, "/html/body/main/section/section/div[2]/div/div/"
                                                       "section[2]/div/div/div[2]/div[2]/div[2]/div[2]/div[2]/input"))
                 )
-            min_value_box.click()
-            sleep(0.2)
+            sclick(min_value_box)
             min_value_box.send_keys(Keys.BACK_SPACE)
             sleep(0.2)
             min_value_box.send_keys(sell_value - 100)
             sleep(0.2)
 
-            driver.find_element(By.XPATH, "/html/body/main/section/section/div[2]/div/div/"
-                                          "section[2]/div/div/div[2]/div[2]/div[2]/button").click()  # confirm list on market
+            sclick(driver.find_element(By.XPATH, "/html/body/main/section/section/div[2]/div/div/"
+                                                 "section[2]/div/div/div[2]/div[2]/div[2]/button"))  # confirm list on market
             print(f"{player_name} listed for: {sell_value}")
             print("-" * 40)
-            wait_for_shield_invisibility(driver)
+            wait_for_shield_invisibility()
 
             profit += sell_value * 0.95 - float(bid_value)
-            driver.find_element(By.CSS_SELECTOR, ".ut-navigation-button-control").click()  # go back
+            sclick(driver.find_element(By.CSS_SELECTOR, ".ut-navigation-button-control"))  # go back
             return profit
         else:
-            wait_for_shield_invisibility(driver)
-            driver.find_element(By.CSS_SELECTOR, ".ut-navigation-button-control").click()  # go back
+            wait_for_shield_invisibility()
+            sclick(driver.find_element(By.CSS_SELECTOR, ".ut-navigation-button-control"))  # go back
             return profit
 
 
